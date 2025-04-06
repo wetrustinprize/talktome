@@ -38,12 +38,12 @@ const client = net.createConnection(SOCKET, () => {
 });
 
 client.on("data", (data) => {
-	console.log(data.toString());
-	client.end(); // Close connection after response
+	client.end();
 });
 
 client.on("error", (err) => {
-	console.error("Connection failed:", err.message);
+	console.error(err.message);
+	client.end();
 	process.exit(1);
 });
 
