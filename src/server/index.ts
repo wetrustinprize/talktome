@@ -1,28 +1,39 @@
-require('better-logging')(console);
+require("better-logging")(console);
 
-import net from 'net';
-import fs from 'fs';
-
+import net from "node:net";
+import fs from "node:fs";
+import { program } from "commander";
 import { NAME, SOCKET, VERSION } from "../globals";
-import { speak } from './espeak';
-import { TalkPackageScheme } from '../package';
-import { pulseConnect, pulseCreate, pulseDestroy, pulseDisconnect } from './pulse';
+import { speak } from "./espeak";
+import { TalkPackageScheme } from "../package";
+import {
+	pulseConnect,
+	pulseCreate,
+	pulseDestroy,
+	pulseDisconnect,
+} from "./pulse";
 
-console.log(`Starting: ${NAME} v${VERSION}...`)
+program
+	.version(VERSION)
+	.option("--hear", "Listen to the audio output of the system.");
+
+program.parse();
+
+console.log(`Starting: ${NAME} v${VERSION}...`);
 
 await pulseConnect();
 await pulseCreate();
 
-if(fs.existsSync(SOCKET)) {
-	console.warn(`There was a socket already running, deleting...`);
+if (fs.existsSync(SOCKET)) {
+	console.warn("There was a socket already running, deleting...");
 	fs.unlinkSync(SOCKET);
 }
 
 console.log("Starting socket...");
 
-let abortController: AbortController = new AbortController();
+let abort: { controller: AbortController; socket: net.Socket } | undefined;
 
-const server = net.createServer(socket => {
+const server = net.createServer((socket) => {
 	socket.on("data", async (data) => {
 		console.log("Data received...");
 
@@ -31,22 +42,34 @@ const server = net.createServer(socket => {
 
 			console.log(`Speaking: ${pkg.message}`);
 
-			abortController.abort();
+			if (abort) {
+				abort.controller.abort();
+				abort.socket.write(JSON.stringify({ type: "aborted" }));
+			}
 
-			await speak(pkg.message);
+			abort = { controller: new AbortController(), socket };
+			const result = await speak(pkg.message, {
+				abortSignal: abort.controller.signal,
+				hear: !!program.opts().hear,
+			});
 
-			console.log("Done speaking, closing connection...");
-			socket.end();
-		} catch(e) {
+			if (result.aborted) {
+				socket.write(JSON.stringify({ type: "aborted" }));
+				socket.write(JSON.stringify({ type: "done" }));
+			}
+		} catch (e) {
 			console.error("Error speaking!");
 			console.error(e);
-			socket.end();
+
+			socket.write(JSON.stringify({ type: "error", error: e }));
 		}
+
+		console.log("Done speaking.");
 	});
 });
 
 server.listen(SOCKET, () => {
-	console.log(`Listening on ${SOCKET}`)
+	console.log(`Listening on ${SOCKET}`);
 });
 
 process.on("SIGINT", () => {
@@ -57,8 +80,7 @@ process.on("SIGINT", () => {
 
 	server.close();
 
-	if(fs.existsSync(SOCKET))
-		fs.unlinkSync(SOCKET);
+	if (fs.existsSync(SOCKET)) fs.unlinkSync(SOCKET);
 
 	process.exit();
 });

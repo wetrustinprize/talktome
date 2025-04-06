@@ -5,13 +5,19 @@
 	"main": "index.js",
 	"scripts": {
 		"dev:server": "bun --watch run src/server/index.ts",
-		"dev:cli": "bun run src/cli/index.ts"
+		"dev:cli": "bun run src/cli/index.ts",
+		"lint": "biome lint --write ./src",
+		"format": "biome format --write ./src",
+		"build": "bun run build:server && bun run build:cli",
+		"build:server": "bun build ./src/server/index.ts --outfile ./dist/ttm-server --compile",
+		"build:cli": "bun build ./src/cli/index.ts --outfile ./dist/ttm-cli --compile"
 	},
 	"keywords": [],
 	"author": "",
 	"license": "ISC",
 	"packageManager": "pnpm@10.7.1",
 	"dependencies": {
+		"@biomejs/biome": "^1.9.4",
 		"await-exec": "^0.1.2",
 		"better-logging": "^5.0.0",
 		"commander": "^13.1.0",
